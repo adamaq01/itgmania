@@ -240,6 +240,7 @@ public:
 	Preference<ShowDancingCharacters>		m_ShowDancingCharacters;
 	Preference<bool>	m_bUseUnlockSystem;
 	Preference<float>	m_fGlobalOffsetSeconds;
+	Preference<float>	m_fMachineSyncBias;
 	Preference<int>	m_iProgressiveLifebar;
 	Preference<int>	m_iProgressiveStageLifebar;
 	Preference<int>	m_iProgressiveNonstopLifebar;
@@ -310,7 +311,6 @@ public:
 	Preference<bool>	m_bSmoothLines;
 	Preference<int>	m_iSoundWriteAhead;
 	Preference<RString>	m_iSoundDevice;
-	Preference<int> m_iRageSoundSampleCountClamp;
 	Preference<int>	m_iSoundPreferredSampleRate;
 	Preference<RString>	m_sLightsStepsDifficulty;
 	Preference<bool>	m_bLightsSimplifyBass;
@@ -335,6 +335,7 @@ public:
 	Preference<float> m_custom_songs_max_megabytes;
 
 	// Debug:
+	Preference<bool>	m_bDebugMenuEnabled;
 	Preference<bool>	m_bLogToDisk;
 	Preference<bool>	m_bForceLogFlush;
 	Preference<bool>	m_bShowLogOutput;

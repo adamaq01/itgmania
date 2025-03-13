@@ -237,6 +237,7 @@ PrefsManager::PrefsManager() :
 	m_ShowDancingCharacters		( "ShowDancingCharacters",		SDC_Random ),
 	m_bUseUnlockSystem		( "UseUnlockSystem",			false ),
 	m_fGlobalOffsetSeconds		( "GlobalOffsetSeconds",		-0.008f ),
+	m_fMachineSyncBias	( "MachineSyncBias",		-0.009f ),
 	m_iProgressiveLifebar		( "ProgressiveLifebar",			0 ),
 	m_iProgressiveStageLifebar	( "ProgressiveStageLifebar",		0 ),
 	m_iProgressiveNonstopLifebar	( "ProgressiveNonstopLifebar",		0 ),
@@ -284,7 +285,6 @@ PrefsManager::PrefsManager() :
 	m_bSmoothLines			( "SmoothLines",			true ),
 	m_iSoundWriteAhead		( "SoundWriteAhead",			0 ),
 	m_iSoundDevice			( "SoundDevice",			"" ),
-	m_iRageSoundSampleCountClamp	("RageSoundSampleCountClamp", 0), //some sound drivers mask the sample location number, the most popular number for this is 2^27, this causes lockup after ~50 minutes at 44.1khz sample rate
 	m_iSoundPreferredSampleRate	( "SoundPreferredSampleRate",		0 ),
 	m_sLightsStepsDifficulty	( "LightsStepsDifficulty",		"hard,medium" ),
 	m_bLightsSimplifyBass		( "LightsSimplifyBass",		false),
@@ -308,6 +308,7 @@ PrefsManager::PrefsManager() :
 	m_custom_songs_max_megabytes("CustomSongsMaxMegabytes", 5.f),
 
 	/* Debug: */
+	m_bDebugMenuEnabled("DebugMenuEnabled", true, nullptr, PreferenceType::Immutable),
 	m_bLogToDisk			( "LogToDisk",		true ),
 #if defined(DEBUG)
 	m_bForceLogFlush		( "ForceLogFlush",	true ),

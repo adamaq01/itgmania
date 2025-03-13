@@ -82,7 +82,7 @@ void CrashHandler::SetForegroundWindow( HWND hWnd )
 	g_hForegroundWnd = hWnd;
 }
 
-void WriteToChild( HANDLE hPipe, const void *pData, std::size_t iSize )
+void WriteToChild( HANDLE hPipe, const void *pData, size_t iSize )
 {
 	while( iSize )
 	{
@@ -472,7 +472,7 @@ static bool PointsToValidCall( ULONG_PTR ptr )
 	return IsValidCall(buf+7, len);
 }
 
-void CrashHandler::do_backtrace( const void **buf, std::size_t size,
+void CrashHandler::do_backtrace( const void **buf, size_t size,
 						 HANDLE hProcess, HANDLE hThread, const CONTEXT *pContext )
 {
 	const void **pLast = buf + size - 1;
@@ -584,7 +584,7 @@ static void debug_crash()
 
 /* Get a stack trace of the current thread and the specified thread.
  * If iID == GetInvalidThreadId(), then output a stack trace for every thread. */
-void CrashHandler::ForceDeadlock( RString reason, std::uint64_t iID )
+void CrashHandler::ForceDeadlock( RString reason, uint64_t iID )
 {
 	strncpy( g_CrashInfo.m_CrashReason, reason, sizeof(g_CrashInfo.m_CrashReason) );
 	g_CrashInfo.m_CrashReason[ sizeof(g_CrashInfo.m_CrashReason)-1 ] = 0;
@@ -611,7 +611,7 @@ void CrashHandler::ForceDeadlock( RString reason, std::uint64_t iID )
 			context.ContextFlags = CONTEXT_FULL;
 			if( !GetThreadContext( hThread, &context ) )
 				wsprintf( g_CrashInfo.m_CrashReason + strlen(g_CrashInfo.m_CrashReason),
-					"; GetThreadContext(%Ix) failed", reinterpret_cast<std::uintptr_t>(hThread) );
+					"; GetThreadContext(%Ix) failed", reinterpret_cast<uintptr_t>(hThread) );
 			else
 			{
 				static const void *BacktracePointers[BACKTRACE_MAX_SIZE];

@@ -23,9 +23,10 @@ public:
 	/* (alias) */
 	float PeekDeltaTime() const { return Ago(); }
 
-	static double GetTimeSinceStart( bool bAccurate = true );	// seconds since the program was started
-	static float GetTimeSinceStartFast() { return GetTimeSinceStart(false); }
-	static std::uint64_t GetUsecsSinceStart();
+	static double GetTimeSinceStart();	// seconds since the program was started
+	static double GetTimeSinceStartFast() { return GetTimeSinceStart(); }
+	static int GetTimeSinceStartSeconds(); 	// This is used where GetTimeSinceStart would be cast to an int without rounding.
+	static uint64_t GetTimeSinceStartMicroseconds();
 
 	/* Get a timer representing half of the time ago as this one. */
 	RageTimer Half() const;
@@ -45,7 +46,7 @@ public:
 	 * microseconds values into two integers and combining them later allows for
 	 * better precision. Use caution when changing data types, since resolution
 	 * mismatch errors are easy to cause when changing things in RageTimer. */
-	std::uint64_t m_secs, m_us;
+	uint64_t m_secs, m_us;
 
 private:
 	static RageTimer Sum( const RageTimer &lhs, float tm );

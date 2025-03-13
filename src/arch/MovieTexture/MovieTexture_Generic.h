@@ -25,13 +25,14 @@ class MovieDecoder
 public:
 	virtual ~MovieDecoder() { }
 
-	virtual RString Open( RString sFile ) = 0;
+	virtual RString Open(RString file) = 0;
 	virtual void Close() = 0;
 	virtual void Rewind() = 0;
+	virtual void Rollover() = 0;
 
 	// Decode the next frame.
 	// Return 1 on success, 0 on EOF, -1 on fatal error, -2 on cancel.
-	virtual int DecodeNextFrame() = 0;
+	virtual int DecodeFrame() = 0;
 	virtual int DecodeMovie() = 0;
 
 	// Returns true if the frame we want to display has been decoded already.
@@ -40,10 +41,7 @@ public:
 	/*
 	 * Get the currently-decoded frame.
 	 */
-	virtual bool GetFrame( RageSurface *pOut ) = 0;
-
-	// Returns true if the frame should be skipped.
-	virtual bool SkipNextFrame() = 0;
+	virtual int GetFrame( RageSurface *surface_out ) = 0;
 
 	/* Return the dimensions of the image, in pixels (before aspect ratio
 	 * adjustments). */
@@ -76,6 +74,12 @@ public:
 
 	// Cancels the decoding of the movie.
 	virtual void Cancel() = 0;
+
+	// Sets the looping property on the decoder.
+	virtual void SetLooping(bool loop) = 0;
+
+	// Returns true if the the final frame was displayed.
+	virtual bool EndOfMovie() = 0;
 };
 
 
@@ -91,47 +95,47 @@ public:
 
 	virtual void Reload();
 
-	virtual void SetPosition( float fSeconds );
+	virtual void SetPosition(float seconds);
 
 	// UpdateMovie tells the MovieTexture to update the displayed frame based
 	// on fSeconds passed in. (e.g., 5.9 input means show the frame that should
 	// be displayed 5.9 seconds into the movie).
-	virtual void UpdateMovie( float fSeconds );
-	virtual void SetPlaybackRate( float fRate ) { m_fRate = fRate; }
-	void SetLooping( bool bLooping=true ) { m_bLoop = bLooping; }
-	std::uintptr_t GetTexHandle() const;
+	virtual void UpdateMovie(float seconds);
+	virtual void SetPlaybackRate(float rate) { rate_ = rate; }
+	void SetLooping(bool looping = true) { loop_ = looping; }
+	uintptr_t GetTexHandle() const;
 
 	static EffectMode GetEffectMode( MovieDecoderPixelFormatYCbCr fmt );
 
 private:
-	MovieDecoder *m_pDecoder;
+	MovieDecoder *decoder_;
 
-	std::unique_ptr<std::thread> decoding_thread;
+	std::unique_ptr<std::thread> decoding_thread_;
 
-	float m_fRate;
-	bool m_bLoop;
+	float rate_;
+	bool loop_;
+	bool finished_ = false;
 
 	// If true, halts all decoding and display.
-	bool m_failure = false;
+	bool failure_ = false;
 
-	std::uintptr_t m_uTexHandle;
-	RageTextureRenderTarget *m_pRenderTarget;
-	RageTexture *m_pTextureIntermediate;
-	Sprite *m_pSprite;
+	uintptr_t texture_handle_;
+	RageTextureRenderTarget *render_target_;
+	RageTexture * intermediate_texture_;
+	Sprite *sprite_;
 
-	RageSurface *m_pSurface;
+	RageSurface *surface_;
 
-	RageTextureLock *m_pTextureLock;
+	RageTextureLock *texture_lock_;
 
 	/* The time the movie is actually at: */
-	float m_fClock;
+	float clock_;
 
 	void UpdateFrame();
 
 	void CreateTexture();
 	void DestroyTexture();
 
-	bool DecodeFrame();
 	float CheckFrameTime();
 };
 

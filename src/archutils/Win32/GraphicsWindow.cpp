@@ -13,7 +13,9 @@
 #include "archutils/Win32/GetFileInformation.h"
 #include "CommandLineActions.h"
 #include "DirectXHelpers.h"
+#include "PrefsManager.h"
 
+#include <optional>
 #include <set>
 
 static const RString g_sClassName = PRODUCT_ID;
@@ -48,6 +50,19 @@ static RString GetNewWindow()
 	sName = Basename(sName);
 
 	return sName;
+}
+
+static std::optional<DEVMODE> GetDisplaySettings(const RString& displayId)
+{
+	DEVMODE dm;
+	ZERO( dm );
+	dm.dmSize = sizeof(dm);
+	if (!EnumDisplaySettings(displayId, ENUM_CURRENT_SETTINGS, &dm))
+	{
+		LOG->Warn("%s", werr_ssprintf(GetLastError(), "EnumDisplaySettings failed").c_str());
+		return std::nullopt;
+	}
+	return dm;
 }
 
 static LRESULT CALLBACK GraphicsWindow_WndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam )
@@ -87,12 +102,13 @@ static LRESULT CALLBACK GraphicsWindow_WndProc( HWND hWnd, UINT msg, WPARAM wPar
 				 * because that's where most other apps seem to do it. */
 				if( g_bHasFocus && !bHadFocus )
 				{
-					ChangeDisplaySettings( &g_FullScreenDevMode, CDS_FULLSCREEN );
+					ChangeDisplaySettingsEx( g_CurrentParams.sDisplayId, &g_FullScreenDevMode, nullptr, CDS_FULLSCREEN, nullptr );
 					ShowWindow( g_hWndMain, SW_SHOWNORMAL );
+					SetWindowPos( g_hWndMain, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE );
 				}
 				else if( !g_bHasFocus && bHadFocus )
 				{
-					ChangeDisplaySettings( nullptr, 0 );
+					ChangeDisplaySettingsEx(g_CurrentParams.sDisplayId, nullptr, nullptr, 0, nullptr);
 				}
 			}
 
@@ -111,8 +127,12 @@ static LRESULT CALLBACK GraphicsWindow_WndProc( HWND hWnd, UINT msg, WPARAM wPar
 		case WM_SETCURSOR:
 			if( !g_CurrentParams.windowed )
 			{
-				//Don't hide the cursor when full screened since we have ShowMouseCursor as an option.
-				//SetCursor(nullptr);
+				// We check if the preference is false because we don't want
+				// to show the cursor if the user has set it to false.
+				if (!PREFSMAN->m_bShowMouseCursor.Get())
+				{
+					SetCursor(nullptr);
+				}
 				return 1;
 			}
 			break;
@@ -181,35 +201,26 @@ static LRESULT CALLBACK GraphicsWindow_WndProc( HWND hWnd, UINT msg, WPARAM wPar
 	CHECKPOINT_M( ssprintf("%p, %u, %08x, %08x", hWnd, msg, wParam, lParam) );
 
 	if( m_bWideWindowClass )
+	{
 		return DefWindowProcW( hWnd, msg, wParam, lParam );
+	}
 	else
+	{
 		return DefWindowProcA( hWnd, msg, wParam, lParam );
+	}
 }
 
 static void AdjustVideoModeParams( VideoModeParams &p )
 {
-	DEVMODE dm;
-	ZERO( dm );
-	dm.dmSize = sizeof(dm);
-	if( !EnumDisplaySettings(nullptr, ENUM_CURRENT_SETTINGS, &dm) )
+	std::optional<DEVMODE> dmOpt = GetDisplaySettings(p.sDisplayId);
+	if (!dmOpt.has_value())
 	{
 		p.rate = 60;
-		LOG->Warn( "%s", werr_ssprintf(GetLastError(), "EnumDisplaySettings failed").c_str() );
 		return;
 	}
 
-	/* On a nForce 2 IGP on Windows 98, dm.dmDisplayFrequency sometimes 
-	 * (but not always) is 0.
-	 *
-	 * MSDN: When you call the EnumDisplaySettings function, the 
-	 * dmDisplayFrequency member may return with the value 0 or 1. 
-	 * These values represent the display hardware's default refresh rate. 
-	 * This default rate is typically set by switches on a display card or 
-	 * computer motherboard, or by a configuration program that does not 
-	 * use Win32 display functions such as ChangeDisplaySettings. */
-	if( !(dm.dmFields & DM_DISPLAYFREQUENCY) ||
-		dm.dmDisplayFrequency == 0 ||
-		dm.dmDisplayFrequency == 1 )
+	const DEVMODE& dm = *dmOpt;
+	if (!(dm.dmFields & DM_DISPLAYFREQUENCY) || dm.dmDisplayFrequency == 0 || dm.dmDisplayFrequency == 1)
 	{
 		p.rate = 60;
 		LOG->Warn( "EnumDisplaySettings doesn't know what the refresh rate is. %d %d %d", dm.dmPelsWidth, dm.dmPelsHeight, dm.dmBitsPerPel );
@@ -227,14 +238,18 @@ RString GraphicsWindow::SetScreenMode( const VideoModeParams &p )
 	if( p.windowed )
 	{
 		// We're going windowed. If we were previously fullscreen, reset.
-		ChangeDisplaySettings( nullptr, 0 );
+		ChangeDisplaySettingsEx( p.sDisplayId, nullptr, nullptr, 0, nullptr );
 
 		return RString();
 	}
 
-	DEVMODE DevMode;
-	ZERO( DevMode );
-	DevMode.dmSize = sizeof(DEVMODE);
+	std::optional<DEVMODE> dmOpt = GetDisplaySettings(p.sDisplayId);
+	if (!dmOpt.has_value())
+	{
+		return "Couldn't retrieve display settings";
+	}
+
+	DEVMODE DevMode = *dmOpt;
 	DevMode.dmPelsWidth = p.width;
 	DevMode.dmPelsHeight = p.height;
 	DevMode.dmBitsPerPel = p.bpp;
@@ -245,18 +260,20 @@ RString GraphicsWindow::SetScreenMode( const VideoModeParams &p )
 		DevMode.dmDisplayFrequency = p.rate;
 		DevMode.dmFields |= DM_DISPLAYFREQUENCY;
 	}
-	ChangeDisplaySettings( nullptr, 0 );
+	ChangeDisplaySettingsEx(p.sDisplayId, nullptr, nullptr, 0, nullptr);
 
-	int ret = ChangeDisplaySettings( &DevMode, CDS_FULLSCREEN );
+	int ret = ChangeDisplaySettingsEx( p.sDisplayId, &DevMode, nullptr, CDS_FULLSCREEN, nullptr );
 	if( ret != DISP_CHANGE_SUCCESSFUL && (DevMode.dmFields & DM_DISPLAYFREQUENCY) )
 	{
 		DevMode.dmFields &= ~DM_DISPLAYFREQUENCY;
-		ret = ChangeDisplaySettings( &DevMode, CDS_FULLSCREEN );
+		ret = ChangeDisplaySettingsEx( p.sDisplayId, &DevMode, nullptr, CDS_FULLSCREEN, nullptr );
 	}
 
-	// XXX: append error
 	if( ret != DISP_CHANGE_SUCCESSFUL )
+	{
+		LOG->Warn("ChangeDisplaySettingsEx failed with error code: %d", ret);
 		return "Couldn't set screen mode";
+	}
 
 	g_FullScreenDevMode = DevMode;
 	return RString();
@@ -274,10 +291,41 @@ static int GetWindowStyle( bool bWindowed , bool bWindowIsFullscreenBorderless)
  * window. */
 void GraphicsWindow::CreateGraphicsWindow( const VideoModeParams &p, bool bForceRecreateWindow )
 {
+	auto resetDeviceMode = [=](DEVMODE& mode)
+	{
+		ZeroMemory(&mode, sizeof(DEVMODE));
+		mode.dmSize = sizeof(DEVMODE);
+		mode.dmDriverExtra = 0;
+	};
+
+	auto deviceModeIsValid = [=](const DEVMODE& mode)
+	{
+		return (mode.dmFields & DM_PELSWIDTH) && (mode.dmFields & DM_PELSHEIGHT)
+			&& (mode.dmFields & DM_DISPLAYFREQUENCY)
+			&& (mode.dmBitsPerPel >= 32 || !(mode.dmFields & DM_BITSPERPEL));
+	};
+
 	g_CurrentParams = p;
 
 	// Adjust g_CurrentParams to reflect the actual display settings.
 	AdjustVideoModeParams( g_CurrentParams );
+
+	DEVMODE devmode;
+	resetDeviceMode(devmode);
+
+	//Top left corner of monitor
+	POINTL pos;
+	//Set default position to (0,0), which is the primary display device as a fallback
+	pos.x = 0;
+	pos.y = 0;
+
+	// Look for the preferred display's position.
+	if (EnumDisplaySettingsEx(p.sDisplayId, ENUM_CURRENT_SETTINGS, &devmode, 0) && deviceModeIsValid(devmode)
+		&& (devmode.dmFields & DM_POSITION))
+	{
+		pos = devmode.dmPosition;
+		resetDeviceMode(devmode);
+	}
 
 	if( g_hWndMain == nullptr || bForceRecreateWindow )
 	{
@@ -337,8 +385,9 @@ void GraphicsWindow::CreateGraphicsWindow( const VideoModeParams &p, bool bForce
 		iWindowStyle |= WS_VISIBLE;
 	SetWindowLong( g_hWndMain, GWL_STYLE, iWindowStyle );
 
+	// Set rectangle for window based on the preferred display and resolution
 	RECT WindowRect;
-	SetRect( &WindowRect, 0, 0, p.width, p.height );
+	SetRect( &WindowRect, pos.x, pos.y, pos.x + p.width, pos.y + p.height );
 	AdjustWindowRect( &WindowRect, iWindowStyle, FALSE );
 
 	//LOG->Warn( "w = %d, h = %d", p.width, p.height );
@@ -346,13 +395,25 @@ void GraphicsWindow::CreateGraphicsWindow( const VideoModeParams &p, bool bForce
 	const int iWidth = WindowRect.right - WindowRect.left;
 	const int iHeight = WindowRect.bottom - WindowRect.top;
 
-	// If windowed, center the window.
-	int x = 0, y = 0;
-	if( p.windowed )
+	int x = pos.x, y = pos.y;
+	/* If windowed and not fullscreen borderless, center the window on the primary display.
+	 * Otherwise the window will be centered on the last display option that was hovered before selecting Windowed in Options*/
+	if( p.windowed && !p.bWindowIsFullscreenBorderless)
 	{
-		x = GetSystemMetrics(SM_CXSCREEN)/2-iWidth/2;
-		y = GetSystemMetrics(SM_CYSCREEN)/2-iHeight/2;
+		if (EnumDisplaySettingsEx(NULL, ENUM_CURRENT_SETTINGS, &devmode, 0) && deviceModeIsValid(devmode)
+			&& (devmode.dmFields & DM_POSITION))
+		{
+			WindowRect.left = devmode.dmPosition.x;
+			WindowRect.top = devmode.dmPosition.y;
+			WindowRect.right = devmode.dmPosition.x + devmode.dmPelsWidth;
+			WindowRect.bottom = devmode.dmPosition.y + devmode.dmPelsHeight;
+		}
+		
+		x = WindowRect.left + (WindowRect.right - WindowRect.left - iWidth) / 2;
+		y = WindowRect.top + (WindowRect.bottom - WindowRect.top - iHeight) / 2;
 	}
+
+	resetDeviceMode(devmode);
 
 	/* Move and resize the window. SWP_FRAMECHANGED causes the above
 	 * SetWindowLong to take effect. */
@@ -469,7 +530,7 @@ void GraphicsWindow::Shutdown()
 	 * It'd be nice to not do this: Windows will do it when we quit, and if
 	 * we're shutting down OpenGL to try D3D, this will cause extra mode
 	 * switches. However, we need to do this before displaying dialogs. */
-	ChangeDisplaySettings( nullptr, 0 );
+	ChangeDisplaySettingsEx( g_CurrentParams.sDisplayId, nullptr, nullptr, 0, nullptr );
 
 	AppInstance inst;
 	UnregisterClass( g_sClassName, inst );
@@ -515,7 +576,7 @@ HWND GraphicsWindow::GetHwnd()
 
 void GraphicsWindow::GetDisplaySpecs( DisplaySpecs &out )
 {
-auto resetDeviceMode = [=]( DEVMODE& mode ) {
+	auto resetDeviceMode = [=]( DEVMODE& mode ) {
 		ZeroMemory( &mode, sizeof( DEVMODE ) );
 		mode.dmSize = sizeof(DEVMODE);
 		mode.dmDriverExtra = 0;
@@ -530,49 +591,59 @@ auto resetDeviceMode = [=]( DEVMODE& mode ) {
 	DEVMODE devmode;
 	resetDeviceMode(devmode);
 
-	std::set<DisplayMode> displayModes;
+	DWORD deviceIter = 0;
+	DISPLAY_DEVICE dd;
+	ZeroMemory(&dd, sizeof(dd));
+	dd.cb = sizeof(dd);
 
-	int i = 0;
-	while ( EnumDisplaySettingsEx( nullptr, i++, &devmode, 0 ) )
+	// Loop through all displays and their display settings to create a DisplaySpec for each display.
+	while (EnumDisplayDevices(NULL, deviceIter++, &dd, 0))
 	{
-		if ( deviceModeIsValid( devmode ) )
+		int mode = 0;
+		std::set<DisplayMode> dispModes;
+
+		while (EnumDisplaySettingsEx(dd.DeviceName, mode++, &devmode, 0))
+		{
+			if (deviceModeIsValid(devmode))
+			{
+				DisplayMode m = { devmode.dmPelsWidth, devmode.dmPelsHeight, static_cast<double> (devmode.dmDisplayFrequency) };
+				dispModes.insert(m);
+			}
+			resetDeviceMode(devmode);
+		}
+
+		//Clean up the device name to store as the DisplaySpec ID
+		RString sDeviceName;
+		sDeviceName = dd.DeviceName;
+		TrimRight(sDeviceName);
+
+		//Make the DisplaySpec Name more friendly by removing the "\\.\" prefix on most Windows display devices
+		RString modeName;
+		modeName = sDeviceName;
+		TrimLeft(modeName, "\\");
+		TrimLeft(modeName, ".");
+		TrimLeft(modeName, "\\");
+
+		// Get the current display mode
+		// Set the ENUM_CURRENT_SETTINGS flag so that we only store DisplaySpecs for valid displays
+		if (EnumDisplaySettingsEx(dd.DeviceName, ENUM_CURRENT_SETTINGS, &devmode, 0) && deviceModeIsValid(devmode)
+			&& (devmode.dmFields & DM_POSITION))
 		{
 			DisplayMode m = { devmode.dmPelsWidth, devmode.dmPelsHeight, static_cast<double> (devmode.dmDisplayFrequency) };
-			displayModes.insert( m );
+			RectI bounds = { devmode.dmPosition.x, devmode.dmPosition.y, static_cast<int> (m.width), static_cast<int> (m.height) };
+			out.insert(DisplaySpec(sDeviceName, modeName, dispModes, m, bounds));
 		}
-		resetDeviceMode( devmode );
-	}
-
-	/*
-		XXXCF: This doesn't appear to actually be necessary, and causes a horrible system lock-up for about 5s.
-	std::set<DisplayMode> displayModes;
-	for ( auto& deviceMode : allDeviceModes) {
-		Sleep(1);
-		if (ChangeDisplaySettingsEx(nullptr, &devmode, nullptr, CDS_TEST, nullptr) == DISP_CHANGE_SUCCESSFUL) {
-			DisplayMode m = { deviceMode.dmPelsWidth, deviceMode.dmPelsHeight, static_cast<double> (deviceMode.dmDisplayFrequency) };
-			displayModes.insert(m);
+		else if (!dispModes.empty())
+		{
+			LOG->Warn("Could not retrieve valid current display mode");
+			out.insert(DisplaySpec(sDeviceName, modeName, *dispModes.begin()));
 		}
 	}
-	*/
-
+	if (out.size() == 0)
+		LOG->Warn("Could not retrieve *any* DisplaySpec's!");
+	ZeroMemory(&dd, sizeof(dd));
+	dd.cb = sizeof(dd);
 	resetDeviceMode(devmode);
-
-	// Get the current display mode
-	if ( EnumDisplaySettingsEx( nullptr, ENUM_CURRENT_SETTINGS, &devmode, 0 ) && deviceModeIsValid(devmode) )
-	{
-		DisplayMode m = { devmode.dmPelsWidth, devmode.dmPelsHeight, static_cast<double> (devmode.dmDisplayFrequency) };
-		RectI bounds = { 0, 0, static_cast<int> (m.width), static_cast<int> (m.height) };
-		out.insert( DisplaySpec( "", "Fullscreen", displayModes, m, bounds ) );
-	}
-	else if ( !displayModes.empty() )
-	{
-		LOG->Warn( "Could not retrieve valid current display mode" );
-		out.insert( DisplaySpec( "", "Fullscreen", *displayModes.begin() ) );
-	}
-	else
-	{
-		LOG->Warn( "Could not retrieve *any* DisplaySpec's!" );
-	}
 }
 
 /*

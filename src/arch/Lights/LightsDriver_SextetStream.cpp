@@ -19,7 +19,7 @@ namespace
 	class SextetImpl
 	{
 	protected:
-		std::uint8_t lastOutput[FULL_SEXTET_COUNT];
+		uint8_t lastOutput[FULL_SEXTET_COUNT];
 		RageFile * out;
 
 	public:
@@ -35,13 +35,13 @@ namespace
 			{
 				out->Flush();
 				out->Close();
-				SAFE_DELETE(out);
+				RageUtil::SafeDelete(out);
 			}
 		}
 
 		void Set(const LightsState * ls)
 		{
-			std::uint8_t buffer[FULL_SEXTET_COUNT];
+			uint8_t buffer[FULL_SEXTET_COUNT];
 
 			packLine(buffer, ls);
 
@@ -102,7 +102,7 @@ inline RageFile * openOutputStream(const RString& filename)
 	if(!file->Open(filename, RageFile::WRITE|RageFile::STREAMED))
 	{
 		LOG->Warn("Error opening file '%s' for output: %s", filename.c_str(), file->GetError().c_str());
-		SAFE_DELETE(file);
+		RageUtil::SafeDelete(file);
 		file = nullptr;
 	}
 

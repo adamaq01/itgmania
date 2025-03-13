@@ -53,15 +53,15 @@ static ThemeMetric<float>	TIPSY_OFFSET_TIMER_FREQUENCY( "ArrowEffects", "TipsyOf
 static ThemeMetric<float>	TIPSY_OFFSET_COLUMN_FREQUENCY( "ArrowEffects", "TipsyOffsetColumnFrequency" );
 static ThemeMetric<float>	TIPSY_OFFSET_ARROW_MAGNITUDE( "ArrowEffects", "TipsyOffsetArrowMagnitude" );
 
-static RString TPSTL_NAME(std::size_t i) { return ssprintf("Tornado%cPositionScaleToLow", dimension_names[i]); }
+static RString TPSTL_NAME(size_t i) { return ssprintf("Tornado%cPositionScaleToLow", dimension_names[i]); }
 static ThemeMetric1D<float> TORNADO_POSITION_SCALE_TO_LOW("ArrowEffects", TPSTL_NAME, 3);
-static RString TPSTH_NAME(std::size_t i) { return ssprintf("Tornado%cPositionScaleToHigh", dimension_names[i]); }
+static RString TPSTH_NAME(size_t i) { return ssprintf("Tornado%cPositionScaleToHigh", dimension_names[i]); }
 static ThemeMetric1D<float> TORNADO_POSITION_SCALE_TO_HIGH("ArrowEffects", TPSTH_NAME, 3);
-static RString TOF_NAME(std::size_t i) { return ssprintf("Tornado%cOffsetFrequency", dimension_names[i]); }
+static RString TOF_NAME(size_t i) { return ssprintf("Tornado%cOffsetFrequency", dimension_names[i]); }
 static ThemeMetric1D<float> TORNADO_OFFSET_FREQUENCY("ArrowEffects", TOF_NAME, 3);
-static RString TOSFL_NAME(std::size_t i) { return ssprintf("Tornado%cOffsetScaleFromLow", dimension_names[i]); }
+static RString TOSFL_NAME(size_t i) { return ssprintf("Tornado%cOffsetScaleFromLow", dimension_names[i]); }
 static ThemeMetric1D<float> TORNADO_OFFSET_SCALE_FROM_LOW("ArrowEffects", TOSFL_NAME, 3);
-static RString TOSFH_NAME(std::size_t i) { return ssprintf("Tornado%cOffsetScaleFromHigh", dimension_names[i]); }
+static RString TOSFH_NAME(size_t i) { return ssprintf("Tornado%cOffsetScaleFromHigh", dimension_names[i]); }
 static ThemeMetric1D<float> TORNADO_OFFSET_SCALE_FROM_HIGH("ArrowEffects", TOSFH_NAME, 3);
 
 static ThemeMetric<float>	DRUNK_COLUMN_FREQUENCY( "ArrowEffects", "DrunkColumnFrequency" );
@@ -94,21 +94,27 @@ static float GetNoteFieldHeight()
 
 float ArrowEffects::GetTime()
 {
-	float mult = 1.f + curr_options->m_fModTimerMult;
-	float offset = curr_options->m_fModTimerOffset;
+	double mult = 1.0 + static_cast<double>(curr_options->m_fModTimerMult);
+	double offset = static_cast<double>(curr_options->m_fModTimerOffset);
 	ModTimerType modtimer = curr_options->m_ModTimerType;
+	double returned_time = 0;
 	switch(modtimer)
 	{
-	    case ModTimerType_Default:
-	    case ModTimerType_Game:
-		return (RageTimer::GetTimeSinceStartFast()+offset)*mult;
-	    case ModTimerType_Beat:
-		return (GAMESTATE->m_Position.m_fSongBeatVisible+offset)*mult;
-	    case ModTimerType_Song:
-		return (GAMESTATE->m_Position.m_fMusicSeconds+offset)*mult;
-	    default:
-		return RageTimer::GetTimeSinceStartFast()+offset;
+		case ModTimerType_Default:
+		case ModTimerType_Game:
+			returned_time = (RageTimer::GetTimeSinceStart() + offset) * mult;
+			break;
+		case ModTimerType_Beat:
+			returned_time = (static_cast<double>(GAMESTATE->m_Position.m_fSongBeatVisible) + offset) * mult;
+			break;
+		case ModTimerType_Song:
+			returned_time = (static_cast<double>(GAMESTATE->m_Position.m_fMusicSeconds) + offset) * mult;
+			break;
+		default:
+			returned_time = RageTimer::GetTimeSinceStart() + offset;
+			break;
 	}
+	return static_cast<float>(returned_time);
 }
 
 namespace
@@ -315,8 +321,8 @@ void ArrowEffects::Init(PlayerNumber pn)
 
 void ArrowEffects::Update()
 {
-	static float fLastTime = 0;
-	float fTime = RageTimer::GetTimeSinceStartFast();
+	static double fLastTime = 0.0;
+	double fTime = RageTimer::GetTimeSinceStart();
 
 	FOREACH_EnabledPlayer( pn )
 	{
@@ -337,9 +343,9 @@ void ArrowEffects::Update()
 
 		if( !position.m_bFreeze || !position.m_bDelay )
 		{
-			data.m_fExpandSeconds += fTime - fLastTime;
+			data.m_fExpandSeconds += static_cast<float>(fTime - fLastTime);
 			data.m_fExpandSeconds = std::fmod( data.m_fExpandSeconds, (PI*2)/(accels[PlayerOptions::ACCEL_EXPAND_PERIOD]+1) );
-			data.m_fTanExpandSeconds += fTime - fLastTime;
+			data.m_fTanExpandSeconds += static_cast<float>(fTime - fLastTime);
 			data.m_fTanExpandSeconds = std::fmod( data.m_fTanExpandSeconds, (PI*2)/(accels[PlayerOptions::ACCEL_TAN_EXPAND_PERIOD]+1) );
 		}
 
@@ -1124,7 +1130,7 @@ float ArrowGetPercentVisible(float fYPosWithoutReverse, int iCol, float fYOffset
 			* fAppearances[PlayerOptions::APPEARANCE_RANDOMVANISH];
 	}
 
-	return clamp(1 + fVisibleAdjust, 0.0f, 1.0f);
+	return std::clamp(1 + fVisibleAdjust, 0.0f, 1.0f);
 }
 
 float ArrowEffects::GetAlpha( const PlayerState* pPlayerState, int iCol, float fYOffset, float fPercentFadeToFail, float fYReverseOffsetPixels, float fDrawDistanceBeforeTargetsPixels, float fFadeInPercentOfDrawFar)

@@ -53,13 +53,23 @@ list(APPEND SM_DATA_NOTEDATA_SRC
             "NoteData.cpp"
             "NoteDataUtil.cpp"
             "NoteDataWithScoring.cpp"
-            "ColumnCues.cpp")
+            "ColumnCues.cpp"
+            "TechCounts.cpp"
+            "MeasureInfo.cpp"
+            "StepParityGenerator.cpp"
+            "StepParityDatastructs.cpp"
+            "StepParityCost.cpp")
 
 list(APPEND SM_DATA_NOTEDATA_HPP
             "NoteData.h"
             "NoteDataUtil.h"
             "NoteDataWithScoring.h"
-            "ColumnCues.h")
+            "ColumnCues.h"
+            "TechCounts.h"
+            "MeasureInfo.h"
+            "StepParityGenerator.h"
+            "StepParityDatastructs.h"
+            "StepParityCost.h")
 
 source_group("Data Structures\\\\Note Data"
              FILES
@@ -126,6 +136,7 @@ source_group("Data Structures\\\\Score Keepers"
              ${SM_DATA_SCORE_HPP})
 
 list(APPEND SM_DATA_SONG_SRC
+            "Group.cpp"
             "Song.cpp"
             "SongCacheIndex.cpp"
             "SongOptions.cpp"
@@ -133,6 +144,7 @@ list(APPEND SM_DATA_SONG_SRC
             "SongUtil.cpp")
 
 list(APPEND SM_DATA_SONG_HPP
+            "Group.h"
             "Song.h"
             "SongCacheIndex.h"
             "SongOptions.h"
@@ -179,6 +191,7 @@ list(APPEND SM_DATA_REST_SRC
             "DateTime.cpp"
             "Difficulty.cpp"
             "DisplaySpec.cpp"
+            "EditModePlayerManager.cpp"
             "EnumHelper.cpp"
             "Game.cpp"
             "GameCommand.cpp"
@@ -230,6 +243,7 @@ list(APPEND SM_DATA_REST_HPP
             "DateTime.h"
             "DisplaySpec.h"
             "Difficulty.h"
+            "EditModePlayerManager.h"
             "EnumHelper.h"
             "Game.h"
             "GameCommand.h"

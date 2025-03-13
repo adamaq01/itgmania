@@ -1,5 +1,6 @@
 #include "global.h"
 #include "Song.h"
+#include "Group.h"
 #include "Steps.h"
 #include "RageUtil.h"
 #include "RageLog.h"
@@ -51,7 +52,7 @@
  * @brief The internal version of the cache for StepMania.
  *
  * Increment this value to invalidate the current cache. */
-const int FILE_CACHE_VERSION = 227;
+const int FILE_CACHE_VERSION = 229;
 
 /** @brief How long does a song sample last by default? */
 const float DEFAULT_MUSIC_SAMPLE_LENGTH = 12.f;
@@ -99,12 +100,12 @@ Song::~Song()
 {
 	for (Steps *s : m_vpSteps)
 	{
-		SAFE_DELETE( s );
+		RageUtil::SafeDelete( s );
 	}
 	m_vpSteps.clear();
 	for (Steps *s : m_UnknownStyleSteps)
 	{
-		SAFE_DELETE(s);
+		RageUtil::SafeDelete(s);
 	}
 	m_UnknownStyleSteps.clear();
 
@@ -170,14 +171,14 @@ void Song::Reset()
 {
 	for (Steps *s : m_vpSteps)
 	{
-		SAFE_DELETE( s );
+		RageUtil::SafeDelete( s );
 	}
 	m_vpSteps.clear();
 	FOREACH_ENUM( StepsType, st )
 		m_vpStepsByType[st].clear();
 	for (Steps *s : m_UnknownStyleSteps)
 	{
-		SAFE_DELETE(s);
+		RageUtil::SafeDelete(s);
 	}
 	m_UnknownStyleSteps.clear();
 
@@ -275,6 +276,7 @@ const RString &Song::GetSongFilePath() const
 /* Hack: This should be a parameter to TidyUpData, but I don't want to pull in
  * <set> into Song.h, which is heavily used. */
 static std::set<RString> BlacklistedImages;
+
 
 /* If PREFSMAN->m_bFastLoad is true, always load from cache if possible.
  * Don't read the contents of sDir if we can avoid it. That means we can't call
@@ -469,11 +471,19 @@ bool Song::ReloadFromSongDir( RString sDir )
 	RemoveAutoGenNotes();
 	std::vector<Steps*> vOldSteps = m_vpSteps;
 
+
 	Song copy;
 	if( !copy.LoadFromSongDir( sDir ) )
 		return false;
 	copy.RemoveAutoGenNotes();
 	*this = copy;
+	
+	if (SONGMAN->GetGroup(this) != nullptr) {
+		m_SongTiming.m_fBeat0GroupOffsetInSeconds = SONGMAN->GetGroup(this)->GetSyncOffset();
+	} else {
+		m_SongTiming.m_fBeat0GroupOffsetInSeconds = PREFSMAN->m_fMachineSyncBias;
+		LOG->Warn("Song %s has no group, using machine sync bias.", m_sMainTitle.c_str());
+	}
 
 	/* Go through the steps, first setting their Song pointer to this song
 	 * (instead of the copy used above), and constructing a map to let us
@@ -482,10 +492,24 @@ bool Song::ReloadFromSongDir( RString sDir )
 	for( std::vector<Steps*>::const_iterator it = m_vpSteps.begin(); it != m_vpSteps.end(); ++it )
 	{
 		(*it)->m_pSong = this;
-
 		StepsID id;
 		id.FromSteps( *it );
 		mNewSteps[id] = *it;
+
+		// Reapply the Group Offset if the steps have their own timing data.
+		if( mNewSteps[id]->m_Timing.empty() )
+		{
+			continue;
+		}
+		if (SONGMAN->GetGroup(this) != nullptr)
+		{
+			mNewSteps[id]->m_Timing.m_fBeat0GroupOffsetInSeconds = SONGMAN->GetGroup(this)->GetSyncOffset();
+		}
+		else
+		{
+			m_SongTiming.m_fBeat0GroupOffsetInSeconds = PREFSMAN->m_fMachineSyncBias;
+			LOG->Warn("Song %s has no group, using machine sync bias.", m_sMainTitle.c_str());
+		}
 	}
 
 	// Now we wipe out the new pointers, which were shallow copied and not deep copied...
@@ -647,9 +671,19 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 
 	m_SongTiming.TidyUpData(false);
 
+	// Apply the group offset to the song timing before we do anything else.
+	float fOffset = PREFSMAN->m_fMachineSyncBias;
+	if (SONGMAN->GetGroupFromName(m_sGroupName) != nullptr)
+	{
+		fOffset = SONGMAN->GetGroupFromName(m_sGroupName)->GetSyncOffset();
+	}
+	m_SongTiming.m_fBeat0GroupOffsetInSeconds = fOffset;
+
 	for (Steps *s : m_vpSteps)
 	{
 		s->m_Timing.TidyUpData(true);
+		// Apply the group offset to the step timing as well.
+		s->m_Timing.m_fBeat0GroupOffsetInSeconds = fOffset;
 	}
 
 	if(!from_cache)
@@ -730,7 +764,7 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 			RString file_ext= GetExtension(*filename).MakeLower();
 			if(!file_ext.empty())
 			{
-				for(std::size_t tf= 0; tf < lists_to_fill.size(); ++ tf)
+				for(size_t tf= 0; tf < lists_to_fill.size(); ++ tf)
 				{
 					for(std::vector<RString>::const_iterator ext= fill_exts[tf]->begin();
 							ext != fill_exts[tf]->end(); ++ext)
@@ -1110,7 +1144,7 @@ void Song::TidyUpData( bool from_cache, bool /* duringCache */ )
 
 	/* Generate these before we autogen notes, so the new notes can inherit
 	 * their source's values. */
-	ReCalculateRadarValuesAndLastSecond(from_cache, true);
+	ReCalculateStepStatsAndLastSecond(from_cache, true);
 	// If the music length is suspiciously shorter than the last second, adjust
 	// the length.  This prevents the ogg patch from setting a false length. -Kyz
 	if(m_fMusicLengthSeconds < lastSecond - 10.0f)
@@ -1131,13 +1165,15 @@ void Song::TranslateTitles()
 						m_sMainTitleTranslit, m_sSubTitleTranslit, m_sArtistTranslit );
 }
 
-void Song::ReCalculateRadarValuesAndLastSecond(bool fromCache, bool duringCache)
+void Song::ReCalculateStepStatsAndLastSecond(bool fromCache, bool duringCache)
 {
 	if( fromCache && this->GetFirstSecond() >= 0 && this->GetLastSecond() > 0 )
 	{
 		// this is loaded from cache, then we just have to calculate the radar values.
 		for( unsigned i=0; i<m_vpSteps.size(); i++ )
-			m_vpSteps[i]->CalculateRadarValues( m_fMusicLengthSeconds );
+		{
+			m_vpSteps[i]->CalculateStepStats( m_fMusicLengthSeconds );
+		}
 		return;
 	}
 
@@ -1148,9 +1184,8 @@ void Song::ReCalculateRadarValuesAndLastSecond(bool fromCache, bool duringCache)
 	for( unsigned i=0; i<m_vpSteps.size(); i++ )
 	{
 		Steps* pSteps = m_vpSteps[i];
-
-		pSteps->CalculateRadarValues( m_fMusicLengthSeconds );
-
+		pSteps->CalculateStepStats(m_fMusicLengthSeconds);
+		
 		// Must initialize before the gotos.
 		NoteData tempNoteData;
 		pSteps->GetNoteData( tempNoteData );
@@ -1214,7 +1249,7 @@ void Song::Save(bool autosave)
 {
 	LOG->Trace( "Song::SaveToSongFile()" );
 
-	ReCalculateRadarValuesAndLastSecond();
+	ReCalculateStepStatsAndLastSecond();
 	TranslateTitles();
 
 	// Save the new files. These calls make backups on their own.
@@ -1397,7 +1432,7 @@ void Song::RemoveAutosave()
 		// Change all the steps to point to the actual file, not the autosave
 		// file.  -Kyz
 		RString extension= GetExtension(m_sSongFileName);
-		for(std::size_t i= 0; i < m_vpSteps.size(); ++i)
+		for(size_t i= 0; i < m_vpSteps.size(); ++i)
 		{
 			if(!m_vpSteps[i]->IsAutogen())
 			{
@@ -1704,13 +1739,13 @@ RString Song::GetCacheFile(RString sType)
 		for( std::pair<const int, RString> PreSet : PreSets[sType.c_str()] )
 		{
 			// Search for image using PreSets.
-			std::size_t Found = Image.find(PreSet.second.c_str());
+			size_t Found = Image.find(PreSet.second.c_str());
 			if(Found!=RString::npos)
 				return GetSongAssetPath( Image, m_sSongDir );
 		}
 		// Search for the image directly if it doesnt exist in PreSets,
 		// Or incase we define our own stuff.
-		std::size_t Found = Image.find(sType.c_str());
+		size_t Found = Image.find(sType.c_str());
 		if(Found!=RString::npos)
 			return GetSongAssetPath( Image, m_sSongDir );
 	}
@@ -2267,6 +2302,7 @@ public:
 		lua_pushstring(L, p->m_sGroupName);
 		return 1;
 	}
+
 	static int MusicLengthSeconds( T* p, lua_State *L )
 	{
 		lua_pushnumber(L, p->m_fMusicLengthSeconds);
@@ -2328,7 +2364,7 @@ public:
 	{
 		const std::vector<BackgroundChange>& changes= p->GetBackgroundChanges(BACKGROUND_LAYER_1);
 		lua_createtable(L, changes.size(), 0);
-		for(std::size_t c= 0; c < changes.size(); ++c)
+		for(size_t c= 0; c < changes.size(); ++c)
 		{
 			lua_createtable(L, 0, 8);
 			lua_pushnumber(L, changes[c].m_fStartBeat);
@@ -2529,6 +2565,8 @@ public:
 };
 
 LUA_REGISTER_CLASS( Song )
+
+
 // lua end
 
 

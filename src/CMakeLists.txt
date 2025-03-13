@@ -333,7 +333,7 @@ list(APPEND SMDATA_LINK_LIB "mad"
                             "glew"
                             "tomcrypt"
                             "tommath"
-                            "jpeg"
+                            "libjpeg-turbo"
                             "zlib"
                             "png"
                             "jsoncpp"
@@ -357,7 +357,7 @@ if(WIN32)
 
   sm_add_link_flag("${SM_EXE_NAME}" "/LIBPATH:\"${SM_EXTERN_DIR}/ffmpeg-w32/${SM_WIN32_ARCH}\"")
   sm_add_link_flag("${SM_EXE_NAME}"
-                   "/LIBPATH:\"${SM_SRC_DIR}/archutils/Win32/ddk/${SM_WIN32_ARCH}\"")
+                   "/LIBPATH:\"$(WindowsSdkDir)Lib\\um\\${SM_WIN32_ARCH}\"")
   sm_add_link_flag("${SM_EXE_NAME}" "/ERRORREPORT:SEND")
   sm_add_link_flag("${SM_EXE_NAME}" "/MAPINFO:EXPORTS")
   sm_add_link_flag("${SM_EXE_NAME}" "/SAFESEH:NO")
@@ -438,7 +438,7 @@ else() # Unix / Linux TODO: Remember to find and locate the zip archive files.
     list(APPEND SMDATA_LINK_LIB ${LIBXTST_LIBRARY})
   endif()
 
-  list(APPEND SMDATA_LINK_LIB ${LIBUSB_LIBRARIES})
+  list(APPEND SMDATA_LINK_LIB ${LIBUSB_LIBRARY})
 
   list(APPEND SMDATA_LINK_LIB ${XRANDR_LIBRARIES} ${XINERAMA_LIBRARIES})
 
@@ -466,7 +466,7 @@ else()
       list(APPEND SM_INCLUDE_DIRS "${X11_INCLUDE_DIR}")
     endif()
 
-    list(APPEND SM_INCLUDE_DIRS "${LIBUSB_INCLUDE_DIRS}")
+    list(APPEND SM_INCLUDE_DIRS "${LIBUSB_INCLUDE_DIR}")
   endif()
 endif()
 

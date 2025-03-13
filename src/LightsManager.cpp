@@ -87,7 +87,7 @@ static void GetUsedGameInputs( std::vector<GameInput> &vGameInputsOut )
 			{
 				std::vector<GameInput> gi;
 				style->StyleInputToGameInput( iCol, pn, gi );
-				for(std::size_t i= 0; i < gi.size(); ++i)
+				for(size_t i= 0; i < gi.size(); ++i)
 				{
 					if(gi[i].IsValid())
 					{
@@ -126,7 +126,7 @@ LightsManager::~LightsManager()
 {
 	for (LightsDriver *iter : m_vpDrivers)
 	{
-		SAFE_DELETE( iter );
+		RageUtil::SafeDelete( iter );
 	}
 	m_vpDrivers.clear();
 }
@@ -217,7 +217,7 @@ void LightsManager::Update( float fDeltaTime )
 
 		case LIGHTSMODE_ATTRACT:
 		{
-			int iSec = (int)RageTimer::GetTimeSinceStartFast();
+			int iSec = RageTimer::GetTimeSinceStartSeconds();
 			int iTopIndex = iSec % 4;
 
 			// Aldo: Disabled this line, apparently it was a forgotten initialization

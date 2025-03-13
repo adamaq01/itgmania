@@ -40,11 +40,12 @@ void GameLoop::SetUpdateRate( float fUpdateRate )
 	g_fUpdateRate = fUpdateRate;
 }
 
+float GameLoop::GetUpdateRate() {
+	return g_fUpdateRate;
+}
+
 static void CheckGameLoopTimerSkips( float fDeltaTime )
 {
-	if( !PREFSMAN->m_bLogSkips )
-		return;
-
 	static int iLastFPS = 0;
 	int iThisFPS = DISPLAY->GetFPS();
 
@@ -138,7 +139,7 @@ namespace
 
 	void DoChangeTheme()
 	{
-		SAFE_DELETE( SCREENMAN );
+		RageUtil::SafeDelete( SCREENMAN );
 		TEXTUREMAN->DoDelayedDelete();
 
 		// In case the previous theme overloaded class bindings, reinitialize them.
@@ -191,7 +192,7 @@ namespace
 
 		if(theme_changing)
 		{
-			SAFE_DELETE(SCREENMAN);
+			RageUtil::SafeDelete(SCREENMAN);
 			TEXTUREMAN->DoDelayedDelete();
 			LUA->RegisterTypes();
 			THEME->SwitchThemeAndLanguage(g_NewTheme, THEME->GetCurLanguage(),
@@ -273,7 +274,13 @@ void GameLoop::UpdateAllButDraw(bool bRunningFromVBLANK)
 		? g_fConstantUpdateDeltaSeconds 
 		: g_GameplayTimer.GetDeltaTime();
 
-	CheckGameLoopTimerSkips(fDeltaTime);
+	// Use a static boolean to check the preference once per game launch.
+	// This is a rarely used debug feature, so we try to skip it if possible.
+	static bool bLogSkips = PREFSMAN->m_bLogSkips;
+	if (bLogSkips)
+	{
+		CheckGameLoopTimerSkips(fDeltaTime);
+	}
 
 	fDeltaTime *= g_fUpdateRate;
 
@@ -293,21 +300,12 @@ void GameLoop::UpdateAllButDraw(bool bRunningFromVBLANK)
 	 * acting on song beat from last frame */
 	HandleInputEvents(fDeltaTime);
 
-	// Legacy hack to work around low sample count in some sound drivers.
-	// This is a workaround for a bug in the Windows sound system that causes
-	// the sound to be cut off if the sample count is too low. This is a
-	// workaround for the bug, but it's not a fix. It should probably be
-	// removed or localized to the DirectSound driver. --sukibaby
-	SOUNDMAN->low_sample_count_workaround();
-
 	// Update the lights
 	LIGHTSMAN->Update(fDeltaTime);
 }
 
 void GameLoop::RunGameLoop()
 {
-	static int CheckInputDevicesCounter = 0;
-	
 	/* People may want to do something else while songs are loading, so do
 	 * this after loading songs. */
 	if( ChangeAppPri() )
@@ -328,13 +326,12 @@ void GameLoop::RunGameLoop()
 
 		UpdateAllButDraw(false);
 		
-		// This loop runs every frame, so the input devices will be checked every 500 frames.
-		if (CheckInputDevicesCounter % (500) == 0)
+		// Check input devices every 255 frames (uint8_t can hold 0-255).
+		static uint8_t i_CheckInputDevices = 0;
+		if (++i_CheckInputDevices == 0)
 		{
 			CheckInputDevices();
-			CheckInputDevicesCounter = 0;
 		}
-		CheckInputDevicesCounter++;
 		
 		SCREENMAN->Draw();
 	}
