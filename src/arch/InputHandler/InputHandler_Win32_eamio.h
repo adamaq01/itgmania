@@ -10,8 +10,8 @@
 
 static bool _eamiodll_loaded = false;
 
-#define EAMIO_DEVICEID_P1 DEVICE_JOY5
-#define EAMIO_DEVICEID_P2 DEVICE_JOY6
+#define EAMIO_DEVICEID_P1 DEVICE_JOY9
+#define EAMIO_DEVICEID_P2 DEVICE_JOY10
 
 enum eam_io_keypad_scan_code {
     EAM_IO_KEYPAD_0 = 0,

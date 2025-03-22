@@ -19,6 +19,9 @@ typedef void (*thread_destroy_t)(int thread_id);
 
 typedef void (*log_formatter_t)(const char* module, const char* fmt, ...);
 
+typedef void (*EAMIO_SET_LOGGERS)(log_formatter_t misc, log_formatter_t info, log_formatter_t warning, log_formatter_t fatal);
+static EAMIO_SET_LOGGERS eamio_set_loggers;
+
 typedef bool (*EAMIO_IO_INIT)(thread_create_t thread_create,
 	thread_join_t thread_join,
 	thread_destroy_t thread_destroy
@@ -30,6 +33,9 @@ static EAMIO_READ_PAD eamio_get_keypad_state;
 
 typedef int (*EAMIO_FINI)();
 static EAMIO_FINI eamio_fini;
+
+typedef bool (*EAMIO_POLL)(std::uint8_t unit_no);
+static EAMIO_POLL eamio_poll;
 
 HINSTANCE hEAMIOdll = nullptr;
 
@@ -103,7 +109,15 @@ void eamio_crt_thread_join(int thread_id, int* result)
 	}
 }
 
-
+void eamio_log(const char *module, const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	char buf[1024];
+	vsnprintf(buf, sizeof(buf), fmt, args);
+	va_end(args);
+	LOG->Trace("%s: %s", module, buf);
+}
 
 int eamio_filter(unsigned int, struct _EXCEPTION_POINTERS*)
 {
@@ -130,9 +144,11 @@ bool InputHandler_Win32_eamio::MapFunctions()
 	__try
 	{
 		//pull the functions we need out of the dll.
+		eamio_set_loggers = (EAMIO_SET_LOGGERS)GetProcAddress(hEAMIOdll, "eam_io_set_loggers");
 		eamio_io_init = (EAMIO_IO_INIT)GetProcAddress(hEAMIOdll, "eam_io_init");
 		eamio_get_keypad_state = (EAMIO_READ_PAD)GetProcAddress(hEAMIOdll, "eam_io_get_keypad_state");
 		eamio_fini = (EAMIO_FINI)GetProcAddress(hEAMIOdll, "eam_io_fini");
+		eamio_poll = (EAMIO_POLL)GetProcAddress(hEAMIOdll, "eam_io_poll");
 	}
 	__except (eamio_filter(GetExceptionCode(), GetExceptionInformation()))
 	{
@@ -156,6 +172,7 @@ InputHandler_Win32_eamio::InputHandler_Win32_eamio()
 	thread_join_t thread_impl_join = eamio_crt_thread_join;
 	thread_destroy_t thread_impl_destroy = eamio_crt_thread_destroy;
 
+	eamio_set_loggers(eamio_log, eamio_log, eamio_log, eamio_log);
 
 	if (eamio_io_init != nullptr)
 	{
@@ -257,8 +274,10 @@ void InputHandler_Win32_eamio::InputThreadMain()
 	{
 		InputHandler::UpdateTimer();
 
-		newInputP1 = eamio_get_keypad_state(0);
-		newInputP2 = eamio_get_keypad_state(1);
+		if (eamio_poll(0))
+			newInputP1 = eamio_get_keypad_state(0);
+		if (eamio_poll(1))
+			newInputP2 = eamio_get_keypad_state(1);
 
 		if (prevInputP1 != newInputP1)
 		{
@@ -275,14 +294,14 @@ void InputHandler_Win32_eamio::InputThreadMain()
 	}
 }
 
-void InputHandler_Win32_eamio::PushInputState(std::uint16_t newInput, bool isP2)
+void InputHandler_Win32_eamio::PushInputState(std::uint16_t newInput, bool isP1)
 {
 	for (int i = 0; i < EAM_IO_KEYPAD_COUNT; i++)
 	{
 		bool pressed = (newInput & (1 << i));
 
 		//return from eamio is active high.
-		DeviceInput di(isP2 ? EAMIO_DEVICEID_P1 : EAMIO_DEVICEID_P2, enum_add2(JOY_BUTTON_1, i), pressed);
+		DeviceInput di(isP1 ? EAMIO_DEVICEID_P1 : EAMIO_DEVICEID_P2, enum_add2(JOY_BUTTON_1, i), pressed);
 
 		//If we're in a thread, our timestamp is accurate.
 		if (InputThread.IsCreated())
