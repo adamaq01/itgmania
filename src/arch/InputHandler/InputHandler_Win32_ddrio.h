@@ -12,7 +12,7 @@
 static bool _ddriodll_loaded = false;
 
 //we want to use a
-#define DDRIO_DEVICEID DEVICE_JOY1
+#define DDRIO_DEVICEID DEVICE_JOY8
 
 enum p3io_light_bit {
 	LIGHT_P1_MENU = 0x00,

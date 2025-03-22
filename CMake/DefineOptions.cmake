@@ -13,7 +13,7 @@ option(WITH_LTO
 option(WITH_SSE2 "Build with SSE2 Optimizations." ON)
 
 # Turn this on to set this to a specific release mode.
-option(WITH_FULL_RELEASE "Build as a proper, full release." OFF)
+option(WITH_FULL_RELEASE "Build as a proper, full release." ON)
 
 # Turn this on to include Club Fantastic songs
 option(WITH_CLUB_FANTASTIC "Include Club Fantastic songs." OFF)
